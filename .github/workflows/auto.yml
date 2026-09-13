@@ -1,0 +1,51 @@
+name: auto
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 00,12 * * *'
+  push:
+    branches:
+      - main
+jobs:
+  wget:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run generate script
+        run: |
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/proxy.txt -nv -O ./list/proxy.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/gfw.txt -nv -O ./list/gfw.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/greatfire.txt -nv -O ./list/greatfire.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/tld-not-cn.txt -nv -O ./list/tld-not-cn.list
+          wget https://core.telegram.org/resources/cidr.txt -nv -O ./list/telegramcidr.list
+          sed -i '/^[0-9.]\{7,\}/ s/^/IP-CIDR,/' ./list/telegramcidr.list
+          sed -i '/^[0-9a-fA-F:]\{4,\}/ s/^/IP-CIDR6,/' ./list/telegramcidr.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/apple.txt -nv -O ./list/apple.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/cncidr.txt -nv -O ./list/cncidr.list
+          wget https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/direct.txt -nv -O ./list/direct.list
+          wget http://ftp.apnic.net/stats/apnic/delegated-apnic-latest -nv -O ./list/data/delegated-apnic-latest.list
+          cat ./list/data/delegated-apnic-latest.list | awk -F '|' '/CN/&&/asn/ {print "AS"$4}'|cat >./list/data/apnicdaycn.list
+          wget https://www.cidr-report.org/as2.0/autnums.html -nv -O ./list/data/autnums.list
+          cat ./list/data/autnums.list | awk '/CN$/ {match($0, /AS[0-9]+/, arr); if (arr[0] != "") print arr[0]}'|cat >./list/data/autnumsdaycn.list
+          wget -U 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' https://bgp.he.net/country/CN -nv -O ./list/data/hecn.list
+          cat ./list/data/hecn.list | awk 'match($0, /AS[0-9]+/, arr) {print arr[0]}'|cat >./list/data/hecndaycn.list
+          wget https://whois.ipip.net/iso/CN -nv -O ./list/data/ipipcn.list
+          cat ./list/data/ipipcn.list | awk 'match($0, /AS[0-9]+/, arr) {print arr[0]}'|cat >./list/data/ipipcndaycn.list
+          cat ./list/data/apnicdaycn.list ./list/data/autnumsdaycn.list ./list/data/hecndaycn.list ./list/data/ipipcndaycn.list | awk '!seen[$0]++ && $0 != ""' > ./list/chinaasn.list
+          sed -i 's/AS/IP-ASN,/g' ./list/chinaasn.list
+          wget https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Shadowrocket/China/China_Domain.list -nv -O ./list/China_Domain.list
+          cat ./list/direct.list ./list/China_Domain.list | sort | uniq > ./list/allnew.list
+          sed -i '/^#/d; /^[^.]*\.[^.]*$/ s/^/./' ./list/allnew.list
+      - name: del commits
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan latest_branch
+          git add -A
+          git commit -m "Update `date +%Y/%m/%d\ %H:%M:%S\ %Z`" -a
+          git branch -D main
+          git branch -m main
+          git push -f origin main
